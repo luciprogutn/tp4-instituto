@@ -1,3 +1,5 @@
+package modelo;
+
 public class Curso {
     private String codigo;
     private String idioma;
@@ -35,28 +37,5 @@ public class Curso {
     public String getNivel() {
         return nivel;
     }
-    public void setNivel(String nivel) {
-        this.nivel = nivel;
-    }
 
-    public String getTurno() {
-        return turno;
-    }
-    public void setTurno(String turno) {
-        this.turno = turno;
-    }
 
-    public int getCupo() {
-        return cupo;
-    }
-    public void setCupo(int cupo) {
-        this.cupo = cupo;
-    }
-
-    public double getValorCuota() {
-        return valorCuota;
-    }
-    public void setValorCuota(double valorCuota) {
-        this.valorCuota = valorCuota;
-    }
-}
