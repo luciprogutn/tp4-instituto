@@ -1,44 +1,239 @@
+package vista;
+
+import dao.AlumnoDAO;
+import dao.CursoDAO;
+import dao.DeudoresDAO;
+import dao.InscripcionDAO;
+import modelo.Alumno;
+import modelo.Curso;
+
 import javax.swing.*;
-import java.sql.SQLException;
-import java.sql.SQLException;
+import javax.swing.table.DefaultTableModel;
+import java.awt.*;
+import java.util.List;
+
 
 public class VentanaInstituto extends JFrame {
+    private final CursoDAO cursoDAO = new CursoDAO();
+    private final AlumnoDAO alumnoDAO = new AlumnoDAO();
+    private final InscripcionDAO inscripcionDAO = new InscripcionDAO();
+    private final DeudoresDAO deudoresDAO = new DeudoresDAO();
 
-    // 1. Atributos de la ventana (componentes + DAO)
-    private CursoDAO cursoDAO = new CursoDAO();
-    // Si la ventana también trabaja con alumnos o inscripciones, podés tener acá:
-    // private AlumnoDAO alumnoDAO = new AlumnoDAO();
-    // private InscripcionDAO inscripcionDAO = new InscripcionDAO();
+    private DefaultTableModel modeloCursos;
+    private JTable tablaCursos;
+
+    private JComboBox<Alumno> comboAlumnos;
+    private JComboBox<Curso> comboCursos;
+
+    private DefaultTableModel modeloDeudores;
+    private JTable tablaDeudores;
 
     public VentanaInstituto() {
-        super("Instituto de Idiomas");
+        setTitle("Instituto de Idiomas - Gestión de Cursos e Inscripciones");
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        // ... armás paneles, layouts, botones, tabla ...[cite: 38, 40, 41]
+        setSize(920, 620);
+        setLocationRelativeTo(null);
 
-        // 2. Al armar la ventana, podés llamar al método que carga los datos desde la base
-        cargarCursos();
-
-        setVisible(true); // siempre al final, cuando ya tiene todo adentro[cite: 39, 42]
+        inicializarComponentes();
+        actualizarTablas();
     }
 
-    private void cargarCursos() {
-        try {
-            // 3. Usás el objeto DAO que declaraste arriba
-            for (Curso c : cursoDAO.listar()) {
-                // ... agregás filas al modelo de la JTable ...[cite: 35, 70]
+    private void inicializarComponentes() {
+        JTabbedPane pestanas = new JTabbedPane();
+        pestanas.addTab("Cursos e Inscripciones", crearPanelCursosEInscripciones());
+        pestanas.addTab("Alta de Alumnos", crearPanelAltaAlumno());
+        pestanas.addTab("Deudores", crearPanelDeudores());
+
+        add(pestanas, BorderLayout.CENTER);
+    }
+
+    private JPanel crearPanelCursosEInscripciones() {
+        JPanel panel = new JPanel(new BorderLayout(10, 10));
+        panel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+
+        String[] columnas = {"Código", "Idioma", "Nivel", "Turno", "Cupo", "Inscriptos", "Vacantes", "Cuota"};
+        modeloCursos = new DefaultTableModel(columnas, 0) {
+            @Override
+            public boolean isCellEditable(int row, int column) {
+                return false;
             }
-        } catch (SQLException ex) {
-            JOptionPane.showMessageDialog(this, "No se pudieron cargar los cursos"); //[cite: 70]
+
+            @Override
+            public Class<?> getColumnClass(int columnIndex) {
+                return switch (columnIndex) {
+                    case 4, 5, 6 -> Integer.class;
+                    case 7 -> Double.class;
+                    default -> String.class;
+                };
+            }
+        };
+
+        tablaCursos = new JTable(modeloCursos);
+        tablaCursos.setAutoCreateRowSorter(true);
+        panel.add(new JScrollPane(tablaCursos), BorderLayout.CENTER);
+
+        JPanel panelInscribir = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
+        comboAlumnos = new JComboBox<>();
+        comboCursos = new JComboBox<>();
+        JButton btnInscribir = new JButton("Inscribir alumno");
+        JButton btnActualizar = new JButton("Actualizar");
+
+        btnInscribir.addActionListener(e -> inscribirDesdePantalla());
+        btnActualizar.addActionListener(e -> actualizarTablas());
+
+        panelInscribir.add(new JLabel("Alumno:"));
+        panelInscribir.add(comboAlumnos);
+        panelInscribir.add(new JLabel("Curso:"));
+        panelInscribir.add(comboCursos);
+        panelInscribir.add(btnInscribir);
+        panelInscribir.add(btnActualizar);
+
+        panel.add(panelInscribir, BorderLayout.SOUTH);
+        return panel;
+    }
+
+    private JPanel crearPanelAltaAlumno() {
+        JPanel panel = new JPanel(new GridLayout(5, 2, 10, 10));
+        panel.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
+
+        JTextField txtNombre = new JTextField();
+        JTextField txtApellido = new JTextField();
+        JTextField txtDni = new JTextField();
+        JTextField txtCorreo = new JTextField();
+        JButton btnGuardar = new JButton("Guardar alumno");
+
+        btnGuardar.addActionListener(e -> {
+            String nombre = txtNombre.getText().trim();
+            String apellido = txtApellido.getText().trim();
+            String dniTexto = txtDni.getText().trim();
+            String correo = txtCorreo.getText().trim();
+
+            if (nombre.isEmpty() || apellido.isEmpty() || dniTexto.isEmpty()) {
+                JOptionPane.showMessageDialog(
+                        this,
+                        "Completá nombre, apellido y DNI antes de guardar.",
+                        "Datos incompletos",
+                        JOptionPane.WARNING_MESSAGE
+                );
+                return;
+            }
+
+            try {
+                int dni = Integer.parseInt(dniTexto);
+                Alumno nuevo = new Alumno(dni, nombre, apellido, correo.isEmpty() ? null : correo);
+                alumnoDAO.insertar(nuevo);
+                JOptionPane.showMessageDialog(this, "Alumno registrado correctamente.");
+                txtNombre.setText("");
+                txtApellido.setText("");
+                txtDni.setText("");
+                txtCorreo.setText("");
+                actualizarTablas();
+            } catch (NumberFormatException ex) {
+                JOptionPane.showMessageDialog(
+                        this,
+                        "El DNI debe contener solo números.",
+                        "DNI inválido",
+                        JOptionPane.WARNING_MESSAGE
+                );
+            } catch (Exception ex) {
+                mostrarError(ex);
+            }
+        });
+
+        panel.add(new JLabel("Nombre:"));
+        panel.add(txtNombre);
+        panel.add(new JLabel("Apellido:"));
+        panel.add(txtApellido);
+        panel.add(new JLabel("DNI:"));
+        panel.add(txtDni);
+        panel.add(new JLabel("Correo (opcional):"));
+        panel.add(txtCorreo);
+        panel.add(new JLabel());
+        panel.add(btnGuardar);
+
+        return panel;
+    }
+
+
+    private JPanel crearPanelDeudores() {
+        JPanel panel = new JPanel(new BorderLayout(10, 10));
+        panel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+
+        // Coincide con las 5 columnas de tu DeudoresDAO: apellido, nombre, dni, codigo, valor_cuota
+        String[] columnas = {"Apellido", "Nombre", "DNI", "Curso", "Cuota adeudada"};
+        modeloDeudores = new DefaultTableModel(columnas, 0) {
+            @Override
+            public boolean isCellEditable(int row, int column) {
+                return false;
+            }
+
+            @Override
+            public Class<?> getColumnClass(int columnIndex) {
+                return columnIndex == 4 ? Double.class : String.class;
+            }
+        };
+
+        tablaDeudores = new JTable(modeloDeudores);
+        tablaDeudores.setAutoCreateRowSorter(true);
+        panel.add(new JScrollPane(tablaDeudores), BorderLayout.CENTER);
+
+        return panel;
+    }
+
+    private void inscribirDesdePantalla() {
+        Alumno alumnoSel = (Alumno) comboAlumnos.getSelectedItem();
+        Curso cursoSel = (Curso) comboCursos.getSelectedItem();
+
+        if (alumnoSel == null || cursoSel == null) {
+            JOptionPane.showMessageDialog(
+                    this,
+                    "Seleccioná un alumno y un curso de la lista.",
+                    "Selección requerida",
+                    JOptionPane.WARNING_MESSAGE
+            );
+            return;
+        }
+
+        try {
+            inscripcionDAO.inscribirAlumno(alumnoSel.getId(), cursoSel.getCodigo());
+            JOptionPane.showMessageDialog(this, "Inscripción registrada.");
+            actualizarTablas();
+        } catch (Exception ex) {
+            mostrarError(ex);
         }
     }
 
-    private void guardarAlgo() {
+    public void actualizarTablas() {
         try {
-            // 4. Otro método de la misma ventana también usa cursoDAO[cite: 70]
-            //cursoDAO.insertar();
-            cargarCursos(); // refrescás la tabla para que coincida con la base
+            modeloCursos.setRowCount(0);
+            List<Object[]> filasCursos = cursoDAO.listarFilasConVacantes();
+            for (Object[] fila : filasCursos) {
+                modeloCursos.addRow(fila);
+            }
+
+            comboAlumnos.removeAllItems();
+            for (Alumno a : alumnoDAO.listar()) {
+                comboAlumnos.addItem(a);
+            }
+
+            comboCursos.removeAllItems();
+            for (Curso c : cursoDAO.listar()) {
+                comboCursos.addItem(c);
+            }
+
+            modeloDeudores.setRowCount(0);
+            for (Object[] filaDeudor : deudoresDAO.listarDeudores()) {
+                modeloDeudores.addRow(filaDeudor);
+            }
         } catch (Exception ex) {
-            JOptionPane.showMessageDialog(this, "No se pudo guardar"); //[cite: 70]
+            mostrarError(ex);
         }
+    }
+
+    private void mostrarError(Exception ex) {
+        String mensaje = (ex.getMessage() != null && !ex.getMessage().isBlank())
+                ? ex.getMessage()
+                : "Ocurrió un error inesperado.";
+        JOptionPane.showMessageDialog(this, mensaje, "Aviso", JOptionPane.ERROR_MESSAGE);
     }
 }
