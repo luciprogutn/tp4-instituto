@@ -8,3 +8,7 @@
 # Datasource local storage ignored files
 /dataSources/
 /dataSources.local.xml
+# ignorando archivo .class
+*.class
+# evitando subir archivo con datos de usuario
+*.properties

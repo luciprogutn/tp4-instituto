@@ -13,7 +13,6 @@ import java.awt.*;
 import java.util.List;
 
 public class VentanaInstituto extends JFrame {
-
     private final CursoDAO cursoDAO = new CursoDAO();
     private final AlumnoDAO alumnoDAO = new AlumnoDAO();
     private final InscripcionDAO inscripcionDAO = new InscripcionDAO();
@@ -24,6 +23,10 @@ public class VentanaInstituto extends JFrame {
 
     private JComboBox<Alumno> comboAlumnos;
     private JComboBox<Curso> comboCursos;
+
+    // Nuevos componentes para el listado y baja de alumnos
+    private DefaultTableModel modeloAlumnos;
+    private JTable tablaAlumnos;
 
     private DefaultTableModel modeloDeudores;
     private JTable tablaDeudores;
@@ -41,7 +44,7 @@ public class VentanaInstituto extends JFrame {
     private void inicializarComponentes() {
         JTabbedPane pestanas = new JTabbedPane();
         pestanas.addTab("Cursos e Inscripciones", crearPanelCursosEInscripciones());
-        pestanas.addTab("Alta de Alumnos", crearPanelAltaAlumno());
+        pestanas.addTab("Gestión de Alumnos", crearPanelGestionAlumnos());
         pestanas.addTab("Deudores", crearPanelDeudores());
 
         add(pestanas, BorderLayout.CENTER);
@@ -92,9 +95,13 @@ public class VentanaInstituto extends JFrame {
         return panel;
     }
 
-    private JPanel crearPanelAltaAlumno() {
-        JPanel panel = new JPanel(new GridLayout(5, 2, 10, 10));
-        panel.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
+    private JPanel crearPanelGestionAlumnos() {
+        JPanel panelPrincipal = new JPanel(new BorderLayout(10, 10));
+        panelPrincipal.setBorder(BorderFactory.createEmptyBorder(15, 15, 15, 15));
+
+        // 1. NORTE: Formulario de Alta
+        JPanel panelFormulario = new JPanel(new GridLayout(5, 2, 10, 8));
+        panelFormulario.setBorder(BorderFactory.createTitledBorder("Registrar Nuevo Alumno"));
 
         JTextField txtNombre = new JTextField();
         JTextField txtApellido = new JTextField();
@@ -105,10 +112,10 @@ public class VentanaInstituto extends JFrame {
         btnGuardar.addActionListener(e -> {
             String nombre = txtNombre.getText().trim();
             String apellido = txtApellido.getText().trim();
-            String dni = txtDni.getText().trim();
+            String dniTexto = txtDni.getText().trim();
             String correo = txtCorreo.getText().trim();
 
-            if (nombre.isEmpty() || apellido.isEmpty() || dni.isEmpty()) {
+            if (nombre.isEmpty() || apellido.isEmpty() || dniTexto.isEmpty()) {
                 JOptionPane.showMessageDialog(
                         this,
                         "Completá nombre, apellido y DNI antes de guardar.",
@@ -119,7 +126,8 @@ public class VentanaInstituto extends JFrame {
             }
 
             try {
-                Alumno nuevo = new Alumno(0, nombre, apellido, dni, correo.isEmpty() ? null : correo);
+                int dni = Integer.parseInt(dniTexto);
+                Alumno nuevo = new Alumno(dni, nombre, apellido, correo.isEmpty() ? null : correo);
                 alumnoDAO.insertar(nuevo);
                 JOptionPane.showMessageDialog(this, "Alumno registrado correctamente.");
                 txtNombre.setText("");
@@ -127,30 +135,111 @@ public class VentanaInstituto extends JFrame {
                 txtDni.setText("");
                 txtCorreo.setText("");
                 actualizarTablas();
+            } catch (NumberFormatException ex) {
+                JOptionPane.showMessageDialog(
+                        this,
+                        "El DNI debe contener solo números.",
+                        "DNI inválido",
+                        JOptionPane.WARNING_MESSAGE
+                );
             } catch (Exception ex) {
                 mostrarError(ex);
             }
         });
 
-        panel.add(new JLabel("Nombre:"));
-        panel.add(txtNombre);
-        panel.add(new JLabel("Apellido:"));
-        panel.add(txtApellido);
-        panel.add(new JLabel("DNI:"));
-        panel.add(txtDni);
-        panel.add(new JLabel("Correo (opcional):"));
-        panel.add(txtCorreo);
-        panel.add(new JLabel());
-        panel.add(btnGuardar);
+        panelFormulario.add(new JLabel("Nombre:"));
+        panelFormulario.add(txtNombre);
+        panelFormulario.add(new JLabel("Apellido:"));
+        panelFormulario.add(txtApellido);
+        panelFormulario.add(new JLabel("DNI:"));
+        panelFormulario.add(txtDni);
+        panelFormulario.add(new JLabel("Correo (opcional):"));
+        panelFormulario.add(txtCorreo);
+        panelFormulario.add(new JLabel());
+        panelFormulario.add(btnGuardar);
 
-        return panel;
+        panelPrincipal.add(panelFormulario, BorderLayout.NORTH);
+
+        // 2. CENTRO: Listado de Alumnos dados de alta
+        String[] columnasAlumnos = {"ID", "DNI", "Apellido", "Nombre", "Correo"};
+        modeloAlumnos = new DefaultTableModel(columnasAlumnos, 0) {
+            @Override
+            public boolean isCellEditable(int row, int column) {
+                return false;
+            }
+
+            @Override
+            public Class<?> getColumnClass(int columnIndex) {
+                return (columnIndex == 0 || columnIndex == 1) ? Integer.class : String.class;
+            }
+        };
+
+        tablaAlumnos = new JTable(modeloAlumnos);
+        tablaAlumnos.setAutoCreateRowSorter(true);
+        tablaAlumnos.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+
+        JScrollPane scrollAlumnos = new JScrollPane(tablaAlumnos);
+        scrollAlumnos.setBorder(BorderFactory.createTitledBorder("Listado de Alumnos Dados de Alta"));
+        panelPrincipal.add(scrollAlumnos, BorderLayout.CENTER);
+
+        // 3. SUR: Botón para dar de baja
+        JPanel panelAcciones = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+        JButton btnDarDeBaja = new JButton("Dar de baja alumno seleccionado");
+        btnDarDeBaja.addActionListener(e -> darDeBajaAlumno());
+        panelAcciones.add(btnDarDeBaja);
+
+        panelPrincipal.add(panelAcciones, BorderLayout.SOUTH);
+
+        return panelPrincipal;
+    }
+
+    private void darDeBajaAlumno() {
+        int filaVista = tablaAlumnos.getSelectedRow();
+
+        // Mensaje de error si intenta dar de baja sin seleccionar un alumno
+        if (filaVista == -1) {
+            JOptionPane.showMessageDialog(
+                    this,
+                    "Seleccioná un alumno de la tabla para darlo de baja.",
+                    "Error de selección",
+                    JOptionPane.ERROR_MESSAGE
+            );
+            return;
+        }
+
+        int filaModelo = tablaAlumnos.convertRowIndexToModel(filaVista);
+        int idAlumno = (int) modeloAlumnos.getValueAt(filaModelo, 0);
+        String apellido = (String) modeloAlumnos.getValueAt(filaModelo, 2);
+        String nombre = (String) modeloAlumnos.getValueAt(filaModelo, 3);
+
+        int confirmacion = JOptionPane.showConfirmDialog(
+                this,
+                "¿Estás seguro de que querés dar de baja a " + nombre + " " + apellido + "?",
+                "Confirmar baja",
+                JOptionPane.YES_NO_OPTION,
+                JOptionPane.QUESTION_MESSAGE
+        );
+
+        if (confirmacion == JOptionPane.YES_OPTION) {
+            try {
+                // Usamos tu método borrar(id) de AlumnoDAO
+                boolean eliminado = alumnoDAO.borrar(idAlumno);
+                if (eliminado) {
+                    JOptionPane.showMessageDialog(this, "Alumno dado de baja correctamente.");
+                    actualizarTablas();
+                } else {
+                    throw new Exception("No se pudo dar de baja al alumno porque ya no existe en la base de datos.");
+                }
+            } catch (Exception ex) {
+                mostrarError(ex);
+            }
+        }
     }
 
     private JPanel crearPanelDeudores() {
         JPanel panel = new JPanel(new BorderLayout(10, 10));
         panel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
 
-        // Coincide con las 5 columnas de tu DeudoresDAO: apellido, nombre, dni, codigo, valor_cuota
         String[] columnas = {"Apellido", "Nombre", "DNI", "Curso", "Cuota adeudada"};
         modeloDeudores = new DefaultTableModel(columnas, 0) {
             @Override
@@ -167,14 +256,11 @@ public class VentanaInstituto extends JFrame {
         tablaDeudores = new JTable(modeloDeudores);
         tablaDeudores.setAutoCreateRowSorter(true);
         panel.add(new JScrollPane(tablaDeudores), BorderLayout.CENTER);
-
         return panel;
     }
-
     private void inscribirDesdePantalla() {
         Alumno alumnoSel = (Alumno) comboAlumnos.getSelectedItem();
         Curso cursoSel = (Curso) comboCursos.getSelectedItem();
-
         if (alumnoSel == null || cursoSel == null) {
             JOptionPane.showMessageDialog(
                     this,
@@ -184,7 +270,6 @@ public class VentanaInstituto extends JFrame {
             );
             return;
         }
-
         try {
             inscripcionDAO.inscribirAlumno(alumnoSel.getId(), cursoSel.getCodigo());
             JOptionPane.showMessageDialog(this, "Inscripción registrada.");
@@ -193,7 +278,6 @@ public class VentanaInstituto extends JFrame {
             mostrarError(ex);
         }
     }
-
     public void actualizarTablas() {
         try {
             modeloCursos.setRowCount(0);
@@ -201,12 +285,19 @@ public class VentanaInstituto extends JFrame {
             for (Object[] fila : filasCursos) {
                 modeloCursos.addRow(fila);
             }
-
             comboAlumnos.removeAllItems();
+            modeloAlumnos.setRowCount(0); // Limpiamos la tabla de alumnos
             for (Alumno a : alumnoDAO.listar()) {
                 comboAlumnos.addItem(a);
+// Cargamos cada alumno dado de alta en la nueva tabla
+                modeloAlumnos.addRow(new Object[]{
+                        a.getId(),
+                        a.getDni(),
+                        a.getApellido(),
+                        a.getNombre(),
+                        a.getCorreo() != null ? a.getCorreo() : "-"
+                });
             }
-
             comboCursos.removeAllItems();
             for (Curso c : cursoDAO.listar()) {
                 comboCursos.addItem(c);
