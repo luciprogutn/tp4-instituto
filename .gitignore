@@ -7,4 +7,6 @@
 
 # Carpetas de compilación
 target/
-bin/
+bin/.idea/
+*.properties
+out/
